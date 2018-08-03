@@ -27,6 +27,7 @@ a cell's updates have been committed.
 from __future__ import absolute_import
 from __future__ import division
 
+import logging
 import threading
 import time
 from builtins import object
@@ -366,6 +367,7 @@ class GaugeData(object):
     seconds = int(self.timestamp)
     nanos = int((self.timestamp - seconds) * 10**9)
     gauge_timestamp = timestamp_pb2.Timestamp(seconds=seconds, nanos=nanos)
+    # TODO update here
     return beam_fn_api_pb2.Metrics.User.GaugeData(
         value=self.value, timestamp=gauge_timestamp)
 
@@ -374,6 +376,15 @@ class GaugeData(object):
     gauge_timestamp = (proto.timestamp.seconds +
                        float(proto.timestamp.nanos) / 10**9)
     return GaugeData(proto.value, timestamp=gauge_timestamp)
+
+  def to_runner_api_monitoring_info(self):
+    # TODO can we define the whole thing here? Seems like we need to
+    # pass in the key as well
+    # TODO use monitoring_info
+    logging.info('ajamato GaugeData to_runner_api_monitoring_info')
+    return beam_fn_api_pb2.CounterData(
+        int64_value=self.value
+    )
 
 
 class DistributionData(object):
@@ -433,12 +444,22 @@ class DistributionData(object):
     return DistributionData(value, 1, value, value)
 
   def to_runner_api(self):
+    #TODO update here
     return beam_fn_api_pb2.Metrics.User.DistributionData(
         count=self.count, sum=self.sum, min=self.min, max=self.max)
 
   @staticmethod
   def from_runner_api(proto):
     return DistributionData(proto.sum, proto.count, proto.min, proto.max)
+
+  def to_runner_api_monitoring_info(self):
+    # TODO can we define the whole thing here? Seems like we need to
+    # pass in the key as well
+    logging.info('ajamato to_runner_api_monitoring_info')
+    return beam_fn_api_pb2.DistributionData(
+        int_distribution_data=beam_fn_api_pb2.IntDistributionData(
+            count=self.count, sum=self.sum, min=self.min, max=self.max)
+    )
 
 
 class MetricAggregator(object):

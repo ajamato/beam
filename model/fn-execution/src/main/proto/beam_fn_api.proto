@@ -255,6 +255,9 @@ message ProcessBundleResponse {
   // (Optional) Specifies that the bundle has been split since the last
   // ProcessBundleProgressResponse was sent.
   BundleSplit split = 2;
+
+  // TODO.
+  repeated MonitoringInfo monitoring_infos = 3;
 }
 
 // A request to report progress information for a given bundle.
@@ -302,6 +305,9 @@ message MonitoringInfo {
   // Some systems such as Stackdriver will be able to aggregate the metrics
   // using a subset of the provided labels
   map<string, string> labels = 5;
+
+  // TODO add comment here.
+  google.protobuf.Timestamp timestamp = 6;
 }
 
 message Metric {
@@ -531,6 +537,9 @@ message ProcessBundleProgressResponse {
   // (Optional) Specifies that the bundle has been split since the last
   // ProcessBundleProgressResponse was sent.
   BundleSplit split = 2;
+
+  // TODO.
+  repeated MonitoringInfo monitoring_infos = 3;
 }
 
 message ProcessBundleSplitRequest {

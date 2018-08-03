@@ -33,6 +33,7 @@ import grpc
 from future import standard_library
 
 import apache_beam as beam  # pylint: disable=ungrouped-imports
+import apache_beam.metrics.monitoring_infos as monitoring_infos
 from apache_beam import coders
 from apache_beam import metrics
 from apache_beam.coders import WindowedValueCoder
@@ -55,6 +56,8 @@ from apache_beam.runners.worker import sdk_worker
 from apache_beam.transforms import trigger
 from apache_beam.transforms.window import GlobalWindows
 from apache_beam.utils import proto_utils
+
+import pdb
 
 standard_library.install_aliases()
 # This module is experimental. No backwards-compatibility guarantees.
@@ -855,17 +858,25 @@ class FnApiRunner(runner.PipelineRunner):
     else:
       controller = FnApiRunner.DirectController()
     metrics_by_stage = {}
+    monitoring_infos_by_stage = {}
 
     try:
       pcoll_buffers = collections.defaultdict(list)
       for stage in stages:
-        metrics_by_stage[stage.name] = self.run_stage(
+        logging.info('ajamato stage %s' % str(stage))
+        stage_results = self.run_stage(
             controller, pipeline_components, stage,
-            pcoll_buffers, safe_coders).process_bundle.metrics
+            pcoll_buffers, safe_coders)
+        metrics_by_stage[stage.name] = stage_results.process_bundle.metrics
+        monitoring_infos_by_stage[stage.name] = (
+            stage_results.process_bundle.monitoring_infos)
+        logging.info('ajamato metrics %s' % str(metrics_by_stage[stage.name]))
+        logging.info('ajamato monitoring_infos %s' %
+            str(stage_results.process_bundle.monitoring_infos))
     finally:
       controller.close()
-
-    return RunnerResult(runner.PipelineState.DONE, metrics_by_stage)
+    return RunnerResult(
+        runner.PipelineState.DONE, metrics_by_stage, monitoring_infos_by_stage)
 
   def run_stage(
       self, controller, pipeline_components, stage, pcoll_buffers, safe_coders):
@@ -1264,10 +1275,19 @@ class ControlFuture(object):
 
 
 class FnApiMetrics(metrics.metric.MetricResults):
-  def __init__(self, step_metrics):
+  def __init__(self, step_metrics, step_monitoring_infos):
     self._counters = {}
     self._distributions = {}
     self._gauges = {}
+
+    #self._init_metrics_from_legacy_metrics(step_metrics)
+    self._init_metrics_from_monitoring_infos(step_monitoring_infos)
+
+
+  def _init_metrics_from_legacy_metrics(self, step_metrics):
+    # TODO add counters and distributions
+    #self._monitoring_info_counters = []
+    logging.info('ajamato fn_api_metrics')
     for step_metric in step_metrics.values():
       for ptransform_id, ptransform in step_metric.ptransforms.items():
         for proto in ptransform.user:
@@ -1287,6 +1307,25 @@ class FnApiMetrics(metrics.metric.MetricResults):
                     metrics.cells.GaugeData.from_runner_api(
                         proto.gauge_data))
 
+  def _init_metrics_from_monitoring_infos(self, step_monitoring_infos):
+    # First return all then add filtering
+    # TODO how do we handle metrics without Ptransform
+    for step_monitoring_infos in step_monitoring_infos.values():
+      for monitoring_info in step_monitoring_infos:
+        key = monitoring_infos.to_metric_key(monitoring_info)
+        if monitoring_infos.is_counter(monitoring_info):
+          self._counters[key] = monitoring_infos.to_metric_result(
+              monitoring_info)
+        elif monitoring_infos.is_distribution(monitoring_info):
+          self._distributions[key] = monitoring_infos.to_metric_result(
+              monitoring_info)
+        elif monitoring_infos.is_gauge(monitoring_info):
+          self._gauges[key] = monitoring_infos.to_metric_result(
+              monitoring_info)
+        logging.info('ajamato monitoring_info %s' % str(monitoring_info))
+        self._monitoring_info_counters.append(monitoring_info)
+        # TODO assign to counters, distribution and gauges
+
   def query(self, filter=None):
     counters = [metrics.execution.MetricResult(k, v, v)
                 for k, v in self._counters.items()
@@ -1297,16 +1336,38 @@ class FnApiMetrics(metrics.metric.MetricResults):
     gauges = [metrics.execution.MetricResult(k, v, v)
               for k, v in self._gauges.items()
               if self.matches(filter, k)]
+    
+    # TODO apply filter to monitoring infos
+    # TODO pull out the value using a helper, create module for this.
+    # TODO pull out the step=, metric= fields
+    """
+    monitoring_info_counters = [ 
+        metrics.execution.MetricResult(
+          mi.urn,
+          mi.metric.counter_data.int64_value,
+          mi.metric.counter_data.int64_value)
+        for mi in self._monitoring_info_counters]
+    """
 
+    logging.info('ajamato counters %s' % counters)
+    logging.info('ajamato distributions %s' % distributions)
+    logging.info('ajamato gauges %s' % gauges)
+    #logging.info('ajamato monitoring_info_counters %s' % monitoring_info_counters)
+    logging.info('\n\n')
+
+    # TODO, make everything use monitoring_info_counters.
+    # match them to counters, distributions, gauges, etc.
     return {'counters': counters,
             'distributions': distributions,
             'gauges': gauges}
+            #'monitoring_infos': monitoring_info_counters}
 
 
 class RunnerResult(runner.PipelineResult):
-  def __init__(self, state, metrics_by_stage):
+  def __init__(self, state, metrics_by_stage, monitoring_infos_by_stage):
     super(RunnerResult, self).__init__(state)
     self._metrics_by_stage = metrics_by_stage
+    self._monitoring_infos_by_stage = monitoring_infos_by_stage
     self._user_metrics = None
 
   def wait_until_finish(self, duration=None):
@@ -1314,7 +1375,8 @@ class RunnerResult(runner.PipelineResult):
 
   def metrics(self):
     if self._user_metrics is None:
-      self._user_metrics = FnApiMetrics(self._metrics_by_stage)
+      self._user_metrics = FnApiMetrics(
+          self._metrics_by_stage, self._monitoring_infos_by_stage)
     return self._user_metrics
 
 

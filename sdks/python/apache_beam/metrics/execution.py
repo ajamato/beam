@@ -32,6 +32,7 @@ Available classes:
 
 from __future__ import absolute_import
 
+import logging
 import threading
 from builtins import object
 from collections import defaultdict
@@ -39,9 +40,14 @@ from collections import defaultdict
 from apache_beam.metrics.cells import CounterCell
 from apache_beam.metrics.cells import DistributionCell
 from apache_beam.metrics.cells import GaugeCell
+from apache_beam.metrics.monitoring_infos import ptransform_int64_metric
+from apache_beam.metrics.monitoring_infos import ptransform_int64_distribution
+from apache_beam.metrics.monitoring_infos import ptransform_int64_gauge
+from apache_beam.metrics.monitoring_infos import user_metric_urn
 from apache_beam.portability.api import beam_fn_api_pb2
 from apache_beam.runners.worker import statesampler
 
+import pdb
 
 class MetricKey(object):
   """Key used to identify instance of metric cell.
@@ -210,6 +216,34 @@ class MetricsContainer(object):
             gauge_data=v.get_cumulative().to_runner_api())
          for k, v in self.gauges.items()]
     )
+
+  def to_runner_api_monitoring_infos(self, transform_id):
+    # TODO update here
+    all_user_metrics = []
+    for k, v in self.counters.items():
+      all_user_metrics.append(ptransform_int64_metric(
+        user_metric_urn(k.namespace, k.name), # TODO implement k.to_urn?
+        v.get_cumulative(),
+        ptransform=transform_id
+      ))
+
+    for k, v in self.distributions.items():
+      logging.info('ajamato distributions.items() %s %s' % (k,v))
+      all_user_metrics.append(ptransform_int64_distribution(
+        user_metric_urn(k.namespace, k.name),
+        v.get_cumulative().to_runner_api_monitoring_info(),
+        ptransform=transform_id
+      ))
+    
+    for k, v in self.gauges.items():
+      logging.info('ajamato gauges.items() %s %s' % (k,v))
+      all_user_metrics.append(ptransform_int64_gauge(
+        user_metric_urn(k.namespace, k.name),
+        v.get_cumulative().to_runner_api_monitoring_info(),
+        ptransform=transform_id
+      ))
+    return all_user_metrics
+
 
 
 class MetricUpdates(object):

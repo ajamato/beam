@@ -306,12 +306,21 @@ class BundleProcessor(object):
       self.state_sampler.stop_if_still_running()
 
   def metrics(self):
+    logging.info('ajamato metrics')
     return beam_fn_api_pb2.Metrics(
         # TODO(robertwb): Rename to progress?
         ptransforms={
             transform_id:
             self._fix_output_tags(transform_id, op.progress_metrics())
             for transform_id, op in self.ops.items()})
+
+  def monitoring_infos(self):
+    all_monitoring_infos = []
+    for transform_id, op in self.ops.items():
+      # TODO apply fix_output tags
+      for m_info in op.monitoring_infos(transform_id):
+        all_monitoring_infos.append(m_info)
+    return all_monitoring_infos
 
   def _fix_output_tags(self, transform_id, metrics):
     # Outputs are still referred to by index, not by name, in many Operations.

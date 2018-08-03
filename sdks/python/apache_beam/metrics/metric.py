@@ -201,6 +201,7 @@ class MetricResults(object):
     raise NotImplementedError
 
 
+# TODO update to work with monitoring_infos
 class MetricsFilter(object):
   """Simple object to filter metrics results.
 

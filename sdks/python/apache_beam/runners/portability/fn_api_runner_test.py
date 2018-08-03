@@ -323,6 +323,7 @@ class FnApiRunnerTest(unittest.TestCase):
 
   def test_metrics(self):
 
+    logging.basicConfig(level=logging.INFO)
     p = self.create_pipeline()
     if not isinstance(p.runner, fn_api_runner.FnApiRunner):
       # This test is inherited by others that may not support the same
