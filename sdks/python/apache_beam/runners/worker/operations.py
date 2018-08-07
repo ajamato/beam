@@ -32,7 +32,6 @@ from apache_beam import pvalue
 from apache_beam.internal import pickler
 from apache_beam.io import iobase
 from apache_beam.metrics.execution import MetricsContainer
-from apache_beam.metrics.execution import ScopedMetricsContainer
 from apache_beam.metrics.monitoring_infos import ptransform_int64_metric
 from apache_beam.portability.api import beam_fn_api_pb2
 from apache_beam.runners import common
@@ -194,19 +193,12 @@ class Operation(object):
         user=self.metrics_container.to_runner_api())
 
   def monitoring_infos(self, transform_id):
-    # TODO, can the transform_id be obtained from the operation?
-    # type
-    # urn (the msec types)
-    # data.metric.
-    # labels, 'PTRANSFORM'
-    # TODO add the user counters,
-    # TODO add the output element counts,
+    # TODO can the transform_id be obtained from the operation?
     return (self.execution_time_metrics(transform_id) +
        self.element_count_metrics(transform_id) +
         self.user_metrics(transform_id))
 
   def element_count_metrics(self, transform_id):
-    # TODO add step?
     if len(self.receivers) == 1:
       # If there is exactly one output, we can unambiguously
       # fix its name later, which we do.
@@ -224,7 +216,6 @@ class Operation(object):
     return self.metrics_container.to_runner_api_monitoring_infos(transform_id)
 
   def execution_time_metrics(self, transform_id):
-    # TODO more accurate to add the nsecs then convert to msecs?
     # TODO creare monitoring_infos.py and move ptransform_int64_metric to it.
     total_time_spent_msecs = (
         self.scoped_start_state.sampled_msecs_int()

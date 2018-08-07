@@ -41,7 +41,9 @@ from apache_beam.coders import registry
 from apache_beam.coders.coder_impl import create_InputStream
 from apache_beam.coders.coder_impl import create_OutputStream
 from apache_beam.internal import pickler
+from apache_beam.metrics.metricbase import MetricName
 from apache_beam.metrics.execution import MetricsEnvironment
+from apache_beam.metrics.execution import MetricKey
 from apache_beam.options.value_provider import RuntimeValueProvider
 from apache_beam.portability import common_urns
 from apache_beam.portability.api import beam_fn_api_pb2
@@ -867,7 +869,9 @@ class FnApiRunner(runner.PipelineRunner):
         stage_results = self.run_stage(
             controller, pipeline_components, stage,
             pcoll_buffers, safe_coders)
+        # Only use user metrics
         metrics_by_stage[stage.name] = stage_results.process_bundle.metrics
+
         monitoring_infos_by_stage[stage.name] = (
             stage_results.process_bundle.monitoring_infos)
         logging.info('ajamato metrics %s' % str(metrics_by_stage[stage.name]))
@@ -1273,20 +1277,28 @@ class ControlFuture(object):
           self._condition.wait(timeout)
     return self._response
 
-
+# TODO add the other non-user metrics from Metrics
+# TODO add the other non-user metrics from Metrics?
+# input_element_counts
+# output_element_counts
+# total_time_spent
+# fraction_remaining
+# output_elements_remaining
+# watermarks
 class FnApiMetrics(metrics.metric.MetricResults):
-  def __init__(self, step_metrics, step_monitoring_infos):
+  def __init__(self, step_metrics, step_monitoring_infos,
+               use_monitoring_infos=False, user_metrics_only=True):
+    logging.info('use_monitoring_infos %s', use_monitoring_infos)
     self._counters = {}
     self._distributions = {}
     self._gauges = {}
-
-    #self._init_metrics_from_legacy_metrics(step_metrics)
-    self._init_metrics_from_monitoring_infos(step_monitoring_infos)
-
+    self.user_metrics_only = user_metrics_only
+    if use_monitoring_infos:
+      self._init_metrics_from_monitoring_infos(step_monitoring_infos)
+    else:
+      self._init_metrics_from_legacy_metrics(step_metrics)
 
   def _init_metrics_from_legacy_metrics(self, step_metrics):
-    # TODO add counters and distributions
-    #self._monitoring_info_counters = []
     logging.info('ajamato fn_api_metrics')
     for step_metric in step_metrics.values():
       for ptransform_id, ptransform in step_metric.ptransforms.items():
@@ -1307,24 +1319,33 @@ class FnApiMetrics(metrics.metric.MetricResults):
                     metrics.cells.GaugeData.from_runner_api(
                         proto.gauge_data))
 
+  # TODO move to monitoring_infos.py after moving MetricKey to metric_base.py
+  # in order to avoid a cyclical dep.
+  def to_metric_key(self, monitoring_info):
+    # Right now this assumes that all metrics have a PTRANSFORM
+    ptransform_id = monitoring_info.labels['PTRANSFORM']  
+    namespace, name = monitoring_infos.parse_namespace_and_name(monitoring_info)
+    return MetricKey(
+        ptransform_id, metrics.metricbase.MetricName(namespace, name))
+
   def _init_metrics_from_monitoring_infos(self, step_monitoring_infos):
-    # First return all then add filtering
-    # TODO how do we handle metrics without Ptransform
+    # TODO how do we handle metrics without Ptransform?
     for step_monitoring_infos in step_monitoring_infos.values():
+      # Only include user metrics.
       for monitoring_info in step_monitoring_infos:
-        key = monitoring_infos.to_metric_key(monitoring_info)
+        if (self.user_metrics_only and
+            not monitoring_infos.is_user_monitoring_info(monitoring_info)):
+          continue
+        key = self.to_metric_key(monitoring_info)
         if monitoring_infos.is_counter(monitoring_info):
-          self._counters[key] = monitoring_infos.to_metric_result(
-              monitoring_info)
+          self._counters[key] = (
+              monitoring_infos.extract_metric_result_map_value(monitoring_info))
         elif monitoring_infos.is_distribution(monitoring_info):
-          self._distributions[key] = monitoring_infos.to_metric_result(
-              monitoring_info)
+          self._distributions[key] = (
+              monitoring_infos.extract_metric_result_map_value(monitoring_info))
         elif monitoring_infos.is_gauge(monitoring_info):
-          self._gauges[key] = monitoring_infos.to_metric_result(
-              monitoring_info)
-        logging.info('ajamato monitoring_info %s' % str(monitoring_info))
-        self._monitoring_info_counters.append(monitoring_info)
-        # TODO assign to counters, distribution and gauges
+          self._gauges[key] = (
+              monitoring_infos.extract_metric_result_map_value(monitoring_info))
 
   def query(self, filter=None):
     counters = [metrics.execution.MetricResult(k, v, v)
@@ -1337,30 +1358,14 @@ class FnApiMetrics(metrics.metric.MetricResults):
               for k, v in self._gauges.items()
               if self.matches(filter, k)]
     
-    # TODO apply filter to monitoring infos
-    # TODO pull out the value using a helper, create module for this.
-    # TODO pull out the step=, metric= fields
-    """
-    monitoring_info_counters = [ 
-        metrics.execution.MetricResult(
-          mi.urn,
-          mi.metric.counter_data.int64_value,
-          mi.metric.counter_data.int64_value)
-        for mi in self._monitoring_info_counters]
-    """
-
     logging.info('ajamato counters %s' % counters)
     logging.info('ajamato distributions %s' % distributions)
     logging.info('ajamato gauges %s' % gauges)
-    #logging.info('ajamato monitoring_info_counters %s' % monitoring_info_counters)
     logging.info('\n\n')
 
-    # TODO, make everything use monitoring_info_counters.
-    # match them to counters, distributions, gauges, etc.
     return {'counters': counters,
             'distributions': distributions,
             'gauges': gauges}
-            #'monitoring_infos': monitoring_info_counters}
 
 
 class RunnerResult(runner.PipelineResult):
@@ -1373,10 +1378,16 @@ class RunnerResult(runner.PipelineResult):
   def wait_until_finish(self, duration=None):
     return self._state
 
-  def metrics(self):
+  def metrics(self, use_monitoring_infos=False, user_metrics_only=True):
+    if use_monitoring_infos or not user_metrics_only:
+      # Don't cache
+      return FnApiMetrics(
+          self._metrics_by_stage, self._monitoring_infos_by_stage,
+          use_monitoring_infos=True, user_metrics_only=user_metrics_only)
     if self._user_metrics is None:
       self._user_metrics = FnApiMetrics(
-          self._metrics_by_stage, self._monitoring_infos_by_stage)
+          self._metrics_by_stage, self._monitoring_infos_by_stage,
+          use_monitoring_infos=False, user_metrics_only=user_metrics_only)
     return self._user_metrics
 
 

@@ -27,6 +27,7 @@ import unittest
 from builtins import range
 
 import apache_beam as beam
+from apache_beam.metrics import monitoring_infos
 from apache_beam.metrics.execution import MetricKey
 from apache_beam.metrics.execution import MetricsEnvironment
 from apache_beam.metrics.metricbase import MetricName
@@ -36,6 +37,9 @@ from apache_beam.runners.worker import statesampler
 from apache_beam.testing.util import assert_that
 from apache_beam.testing.util import equal_to
 from apache_beam.transforms import window
+
+import pdb
+import json
 
 if statesampler.FAST_SAMPLER:
   DEFAULT_SAMPLING_PERIOD_MS = statesampler.DEFAULT_SAMPLING_PERIOD_MS
@@ -357,6 +361,62 @@ class FnApiRunnerTest(unittest.TestCase):
         dist.committed.data, beam.metrics.cells.DistributionData(4, 2, 1, 3))
     self.assertEqual(dist.committed.mean, 2.0)
     self.assertEqual(gaug.committed.value, 3)
+
+    self.maxDiff = None
+    all_metrics = res.metrics(use_monitoring_infos=False).query()
+    all_metrics_via_montoring_infos = res.metrics(
+        use_monitoring_infos=True).query()
+    logging.info('all_metrics\n%s' % all_metrics)
+    logging.info('all_metrics_via_montoring_infos\n%s' % all_metrics_via_montoring_infos)
+    
+    self.assertEqual(3, len(all_metrics))
+    self.assertEqual(3, len(all_metrics_via_montoring_infos))
+    for i in range(len(all_metrics['gauges'])):
+      metric = all_metrics['gauges'][i]
+      metric_via_mi = all_metrics_via_montoring_infos['gauges'][i]
+      # Set the timestamps to be equal, then Compare for equality.
+      metric_via_mi.committed.data.timestamp = metric.committed.data.timestamp
+      metric_via_mi.attempted.data.timestamp = metric.attempted.data.timestamp
+    self.assertEqual(all_metrics, all_metrics_via_montoring_infos)
+
+  def assert_counter_exists(self, metrics, namespace, urn, step):
+    found = 0
+    metric_key = MetricKey(step, MetricName(namespace, urn))
+    for m in metrics['counters']:
+      if m.key == metric_key:
+        found = found + 1
+    self.assertEqual(1, found)
+
+  def test_non_user_metrics(self):
+    logging.basicConfig(level=logging.INFO)
+    p = self.create_pipeline()
+    if not isinstance(p.runner, fn_api_runner.FnApiRunner):
+      # This test is inherited by others that may not support the same
+      # internal way of accessing progress metrics.
+      self.skipTest('Metrics not supported.')
+
+    pcoll = p | beam.Create(['a', 'zzz'])
+    # pylint: disable=expression-not-assigned
+    pcoll | 'MyStep' >> beam.FlatMap(lambda x: logging.info('elem %s', x))
+    res = p.run()
+    res.wait_until_finish()
+
+    self.maxDiff = None
+    all_metrics_via_montoring_infos = res.metrics(
+        user_metrics_only=False, use_monitoring_infos=True).query()
+    logging.info('all_metrics_via_montoring_infos\n%s' % all_metrics_via_montoring_infos)
+    urns = [
+      monitoring_infos.ELEMENT_COUNT_URN,
+      monitoring_infos.START_BUNDLE_MSECS_URN,
+      monitoring_infos.PROCESS_BUNDLE_MSECS_URN,
+      monitoring_infos.FINISH_BUNDLE_MSECS_URN,
+      monitoring_infos.TOTAL_MSECS_URN,
+    ]
+    for urn in urns:
+      self.assert_counter_exists(all_metrics_via_montoring_infos,
+          'NAMESPACE', urn, step='Create/Read')
+      self.assert_counter_exists(all_metrics_via_montoring_infos,
+          'NAMESPACE', urn, step='MyStep')
 
   def test_progress_metrics(self):
     p = self.create_pipeline()

@@ -22,11 +22,23 @@ from __future__ import absolute_import
 from apache_beam.portability.api import beam_fn_api_pb2
 from apache_beam.metrics.cells import DistributionData
 from apache_beam.metrics.cells import DistributionResult
+from apache_beam.metrics.cells import GaugeResult
+from apache_beam.metrics.cells import GaugeData
 from google.protobuf import timestamp_pb2
 
-from apache_beam.metrics.execution import MetricKey
 import logging
 import time
+
+USER_COUNTER_URN_PREFIX = 'beam:metric:user:'
+ELEMENT_COUNT_URN = 'beam:metric:element_count:v1'
+START_BUNDLE_MSECS_URN = (
+    'beam:metric:pardo_execution_time:start_bundle_msecs:v1')
+PROCESS_BUNDLE_MSECS_URN = (
+    'beam:metric:pardo_execution_time:process_bundle_msecs:v1')
+FINISH_BUNDLE_MSECS_URN = (
+    'beam:metric:pardo_execution_time:finish_bundle_msecs:v1')
+TOTAL_MSECS_URN = (
+    'beam:metric:ptransform_execution_time:total_msecs:v1')
 
 
 # TODO relcoate sshared helper for to_timestamp_pb2
@@ -40,7 +52,7 @@ def to_timestamp_secs(timestamp_proto):
   return timestamp_proto.seconds + timestamp_proto.nanos * 10**-9
 
 def extract_value(monitoring_info):
-  if is_counter(monitoring_info):
+  if is_counter(monitoring_info) or is_gauge(monitoring_info):
     return monitoring_info.metric.counter_data.int64_value
 
 def extract_timestamp(monitoring_info):
@@ -84,6 +96,7 @@ def create_monitoring_info(metric, urn, type_urn, ptransform, labels=dict()):
   if not ptransform:
     ptransform = 'PLACEHOLDER'
   labels['PTRANSFORM'] = ptransform
+  #TODO the timestamp this causes an correctness issue.
   return beam_fn_api_pb2.MonitoringInfo(
       urn=urn,
       type=type_urn,
@@ -93,13 +106,7 @@ def create_monitoring_info(metric, urn, type_urn, ptransform, labels=dict()):
   )
 
 def user_metric_urn(namespace, name):
-  return 'beam:metric:user:%s:%s' % (namespace, name)
-
-def to_metric_key(monitoring_info):
-  # Right now this assumes that all metrics have a PTRANSFORM
-  ptransform_id = monitoring_info.labels['PTRANSFORM']  
-  # TODO do we need to parse out the user name, namespace, etc.
-  return MetricKey(ptransform_id, monitoring_info.urn)
+  return '%s%s:%s' % (USER_COUNTER_URN_PREFIX, namespace, name)
 
 def is_counter(monitoring_info):
   return monitoring_info.type in ['beam:metrics:SumInt64']
@@ -110,18 +117,29 @@ def is_distribution(monitoring_info):
 def is_gauge(monitoring_info):
   return monitoring_info.type in ['beam:metrics:LatestInt64']
 
-def to_metric_result(monitoring_info):
+# TODO rename
+def extract_metric_result_map_value(monitoring_info):
   # Returns a metric result (AKA the legacy format).
   # from the MonitoringInfo
   if is_counter(monitoring_info):
-    return beam_fn_api_pb2.User.CounterData(
-        value=extract_value(monitoring_info))
+    return extract_value(monitoring_info)
   if is_distribution(monitoring_info):
     distribution_data = extract_distribution(monitoring_info)
-    return metrics.cells.DistributionResult(
+    return DistributionResult(
         DistributionData(distribution_data.sum, distribution_data.count,
                          distribution_data.min, distribution_data.max))
   if is_gauge(monitoring_info):
     timestamp_secs = to_timestamp_secs(extract_timestamp(monitoring_info))
     return GaugeResult(GaugeData(
         extract_value(monitoring_info), timestamp_secs))
+
+def is_user_monitoring_info(monitoring_info):
+  return monitoring_info.urn.startswith(USER_COUNTER_URN_PREFIX)
+
+def parse_namespace_and_name(monitoring_info):
+  logging.info('monitoring_info.urn %s' % monitoring_info.urn)
+  if is_user_monitoring_info(monitoring_info):
+    stripped = monitoring_info.urn[len(USER_COUNTER_URN_PREFIX):]
+    split = stripped.split(':')
+    return split[0], ''.join(split[1:])
+  return 'NAMESPACE', monitoring_info.urn or 'NAME'
