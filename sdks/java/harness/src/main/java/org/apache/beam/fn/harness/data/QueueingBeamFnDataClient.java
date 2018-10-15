@@ -88,8 +88,8 @@ public class QueueingBeamFnDataClient implements BeamFnDataClient {
    * <p>All {@link InboundDataClient}s will be failed if processing throws an exception.
    *
    * <p>This method is NOT thread safe. This should only be invoked by a single thread, and is
-   * intended for use with a newly constructed QueueingBeamFnDataClient in
-   * {@link ProcessBundleHandler#processBundle(InstructionRequest)}.
+   * intended for use with a newly constructed QueueingBeamFnDataClient in {@link
+   * ProcessBundleHandler#processBundle(InstructionRequest)}.
    */
   public void drainAndBlock() throws Exception {
     while (true) {

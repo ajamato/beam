@@ -26,6 +26,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.collect.Sets;
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -60,9 +61,14 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.PCollection;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
 import org.apache.beam.model.pipeline.v1.RunnerApi.WindowingStrategy;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
+import org.apache.beam.runners.core.metrics.MetricUpdates;
+import org.apache.beam.runners.core.metrics.MetricUpdates.MetricUpdate;
+import org.apache.beam.runners.core.metrics.MetricsContainerImpl;
+import org.apache.beam.runners.core.metrics.SimpleMonitoringInfoBuilder;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.RemoteGrpcPortRead;
 import org.apache.beam.sdk.fn.function.ThrowingRunnable;
+import org.apache.beam.sdk.metrics.MetricsEnvironment;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.util.common.ReflectHelpers;
@@ -298,28 +304,42 @@ public class ProcessBundleHandler {
             splitListener);
       }
 
-      // Already in reverse topological order so we don't need to do anything.
-      for (ThrowingRunnable startFunction : startFunctions) {
-        LOG.debug("Starting function {}", startFunction);
-        startFunction.run();
-      }
+      MetricsContainerImpl metricsContainer = new MetricsContainerImpl(request.getInstructionId());
+      try (Closeable closeable = MetricsEnvironment.scopedMetricsContainer(metricsContainer)) {
+        // Already in reverse topological order so we don't need to do anything.
+        for (ThrowingRunnable startFunction : startFunctions) {
+          LOG.debug("Starting function {}", startFunction);
+          startFunction.run();
+        }
 
-      if (hasReadPTransform) {
-        // This will trigger the process() call on each element indirectly.
-        queueingClient.drainAndBlock();
-      }
+        if (hasReadPTransform) {
+          // This will trigger the process() call on each element indirectly.
+          queueingClient.drainAndBlock();
+        }
 
-      // Need to reverse this since we want to call finish in topological order.
-      for (ThrowingRunnable finishFunction : Lists.reverse(finishFunctions)) {
-        LOG.debug("Finishing function {}", finishFunction);
-        finishFunction.run();
-      }
-      if (!allResiduals.isEmpty()) {
-        response.addAllResidualRoots(allResiduals.values());
+        // Need to reverse this since we want to call finish in topological order.
+        for (ThrowingRunnable finishFunction : Lists.reverse(finishFunctions)) {
+          LOG.debug("Finishing function {}", finishFunction);
+          finishFunction.run();
+        }
+
+        // Extract user metrics and store as MonitoringInfos.
+        MetricUpdates mus = metricsContainer.getUpdates();
+        for (MetricUpdate<Long> mu : mus.counterUpdates()) {
+          SimpleMonitoringInfoBuilder builder = new SimpleMonitoringInfoBuilder(true);
+          builder.setUrnForUserMetric(
+              mu.getKey().metricName().getNamespace(), mu.getKey().metricName().getName());
+          builder.setInt64Value(mu.getUpdate());
+          builder.setTimestampToNow();
+          response.addMonitoringInfos(builder.build());
+        }
+
+        if (!allResiduals.isEmpty()) {
+          response.addAllResidualRoots(allResiduals.values());
+        }
+        return BeamFnApi.InstructionResponse.newBuilder().setProcessBundle(response);
       }
     }
-
-    return BeamFnApi.InstructionResponse.newBuilder().setProcessBundle(response);
   }
 
   /**
