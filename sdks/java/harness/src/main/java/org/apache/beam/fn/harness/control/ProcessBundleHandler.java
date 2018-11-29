@@ -42,6 +42,7 @@ import java.util.function.Supplier;
 import org.apache.beam.fn.harness.PTransformRunnerFactory;
 import org.apache.beam.fn.harness.PTransformRunnerFactory.Registrar;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.data.QueueingBeamFnDataClient;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.fn.harness.state.BeamFnStateGrpcClientCache;
@@ -152,7 +153,7 @@ public class ProcessBundleHandler {
       Supplier<String> processBundleInstructionId,
       ProcessBundleDescriptor processBundleDescriptor,
       SetMultimap<String, String> pCollectionIdsToConsumingPTransforms,
-      ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+      PCollectionConsumerRegistry pCollectionConsumerRegistry,
       Set<String> processedPTransformIds,
       Consumer<ThrowingRunnable> addStartFunction,
       Consumer<ThrowingRunnable> addFinishFunction,
@@ -163,7 +164,7 @@ public class ProcessBundleHandler {
     // Since we are creating the consumers first, we know that the we are building the DAG
     // in reverse topological order.
     for (String pCollectionId : pTransform.getOutputsMap().values()) {
-
+      // ajamato these are the output pcollection of the ptransform.
       for (String consumingPTransformId : pCollectionIdsToConsumingPTransforms.get(pCollectionId)) {
         createRunnerAndConsumersForPTransformRecursively(
             beamFnStateClient,
@@ -173,7 +174,7 @@ public class ProcessBundleHandler {
             processBundleInstructionId,
             processBundleDescriptor,
             pCollectionIdsToConsumingPTransforms,
-            pCollectionIdsToConsumers,
+            pCollectionConsumerRegistry,
             processedPTransformIds,
             addStartFunction,
             addFinishFunction,
@@ -193,6 +194,8 @@ public class ProcessBundleHandler {
               "Cannot process composite transform: %s", TextFormat.printToString(pTransform)));
     }
     // Skip reprocessing processed pTransforms.
+
+    // TODO ajamato, can you wrap every runner? And calculate the input and output elements?
     if (!processedPTransformIds.contains(pTransformId)) {
       urnToPTransformRunnerFactoryMap
           .getOrDefault(pTransform.getSpec().getUrn(), defaultPTransformRunnerFactory)
@@ -206,7 +209,7 @@ public class ProcessBundleHandler {
               processBundleDescriptor.getPcollectionsMap(),
               processBundleDescriptor.getCodersMap(),
               processBundleDescriptor.getWindowingStrategiesMap(),
-              pCollectionIdsToConsumers,
+              pCollectionConsumerRegistry,
               addStartFunction,
               addFinishFunction,
               splitListener);
@@ -230,8 +233,8 @@ public class ProcessBundleHandler {
         (BeamFnApi.ProcessBundleDescriptor) fnApiRegistry.apply(bundleId);
 
     SetMultimap<String, String> pCollectionIdsToConsumingPTransforms = HashMultimap.create();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers =
-        ArrayListMultimap.create();
+    PCollectionConsumerRegistry pCollectionConsumerRegistry = new PCollectionConsumerRegistry();
+
     HashSet<String> processedPTransformIds = new HashSet<>();
     List<ThrowingRunnable> startFunctions = new ArrayList<>();
     List<ThrowingRunnable> finishFunctions = new ArrayList<>();
@@ -240,6 +243,7 @@ public class ProcessBundleHandler {
     for (Map.Entry<String, RunnerApi.PTransform> entry :
         bundleDescriptor.getTransformsMap().entrySet()) {
       for (String pCollectionId : entry.getValue().getInputsMap().values()) {
+        // ajamato Input Pcollections
         pCollectionIdsToConsumingPTransforms.put(pCollectionId, entry.getKey());
       }
     }
@@ -297,12 +301,13 @@ public class ProcessBundleHandler {
             request::getInstructionId,
             bundleDescriptor,
             pCollectionIdsToConsumingPTransforms,
-            pCollectionIdsToConsumers,
+            pCollectionConsumerRegistry,
             processedPTransformIds,
             startFunctions::add,
             finishFunctions::add,
             splitListener);
       }
+
 
       MetricsContainerImpl metricsContainer = new MetricsContainerImpl(request.getInstructionId());
       try (Closeable closeable = MetricsEnvironment.scopedMetricsContainer(metricsContainer)) {
@@ -326,7 +331,7 @@ public class ProcessBundleHandler {
         // Extract user metrics and store as MonitoringInfos.
         MetricUpdates mus = metricsContainer.getUpdates();
         for (MetricUpdate<Long> mu : mus.counterUpdates()) {
-          SimpleMonitoringInfoBuilder builder = new SimpleMonitoringInfoBuilder(true);
+          SimpleMonitoringInfoBuilder builder = new SimpleMonitoringInfoBuilder(false);
           builder.setUrnForUserMetric(
               mu.getKey().metricName().getNamespace(), mu.getKey().metricName().getName());
           builder.setInt64Value(mu.getUpdate());
@@ -429,7 +434,7 @@ public class ProcessBundleHandler {
         Map<String, PCollection> pCollections,
         Map<String, Coder> coders,
         Map<String, WindowingStrategy> windowingStrategies,
-        ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+        PCollectionConsumerRegistry pCollectionConsumerRegistry,
         Consumer<ThrowingRunnable> addStartFunction,
         Consumer<ThrowingRunnable> addFinishFunction,
         BundleSplitListener splitListener) {

@@ -21,7 +21,6 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 
 import com.google.auto.service.AutoService;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ListMultimap;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
@@ -30,6 +29,7 @@ import java.util.function.Supplier;
 import org.apache.beam.fn.harness.control.BundleSplitListener;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
 import org.apache.beam.fn.harness.data.MultiplexingFnDataReceiver;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.RemoteGrpcPort;
@@ -86,7 +86,7 @@ public class BeamFnDataReadRunner<OutputT> {
         Map<String, PCollection> pCollections,
         Map<String, RunnerApi.Coder> coders,
         Map<String, RunnerApi.WindowingStrategy> windowingStrategies,
-        ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+        PCollectionConsumerRegistry pCollectionConsumerRegistry,
         Consumer<ThrowingRunnable> addStartFunction,
         Consumer<ThrowingRunnable> addFinishFunction,
         BundleSplitListener splitListener)
@@ -110,8 +110,10 @@ public class BeamFnDataReadRunner<OutputT> {
       }
       Collection<FnDataReceiver<WindowedValue<OutputT>>> consumers =
           (Collection)
-              pCollectionIdsToConsumers.get(getOnlyElement(pTransform.getOutputsMap().values()));
+              pCollectionConsumerRegistry.get(getOnlyElement(pTransform.getOutputsMap().values()));
 
+      // TODO ajamato. Is this the root place where the consumers are added?
+      // We need to make sure if we do any wrapping, that these are passe in properly.
       BeamFnDataReadRunner<OutputT> runner =
           new BeamFnDataReadRunner<>(
               pTransform,

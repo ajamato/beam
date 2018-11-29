@@ -41,6 +41,7 @@ public abstract class RemoteGrpcPortRead {
 
   public static RemoteGrpcPortRead fromPTransform(PTransform pTransform)
       throws InvalidProtocolBufferException {
+    // TODO ajamato, is this important?
     checkArgument(
         URN.equals(pTransform.getSpec().getUrn()),
         "Expected URN for %s, got %s",

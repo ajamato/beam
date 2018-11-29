@@ -20,7 +20,6 @@ package org.apache.beam.fn.harness;
 import com.google.auto.service.AutoService;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ListMultimap;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
@@ -29,6 +28,7 @@ import java.util.function.Supplier;
 import org.apache.beam.fn.harness.control.BundleSplitListener;
 import org.apache.beam.fn.harness.control.ProcessBundleHandler;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Coder;
@@ -78,15 +78,16 @@ public class BoundedSourceRunner<InputT extends BoundedSource<OutputT>, OutputT>
         Map<String, PCollection> pCollections,
         Map<String, Coder> coders,
         Map<String, RunnerApi.WindowingStrategy> windowingStrategies,
-        ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+        PCollectionConsumerRegistry pCollectionConsumerRegistry,
         Consumer<ThrowingRunnable> addStartFunction,
         Consumer<ThrowingRunnable> addFinishFunction,
         BundleSplitListener splitListener) {
 
       ImmutableList.Builder<FnDataReceiver<WindowedValue<?>>> consumers = ImmutableList.builder();
       for (String pCollectionId : pTransform.getOutputsMap().values()) {
-        consumers.addAll(pCollectionIdsToConsumers.get(pCollectionId));
+        consumers.addAll(pCollectionConsumerRegistry.get(pCollectionId));
       }
+      // TODO ajamato, consumers are passed in here as well.
 
       @SuppressWarnings({"rawtypes", "unchecked"})
       BoundedSourceRunner<InputT, OutputT> runner =
@@ -97,7 +98,7 @@ public class BoundedSourceRunner<InputT extends BoundedSource<OutputT>, OutputT>
 
       FnDataReceiver runReadLoop = (FnDataReceiver<WindowedValue<InputT>>) runner::runReadLoop;
       for (String pCollectionId : pTransform.getInputsMap().values()) {
-        pCollectionIdsToConsumers.put(pCollectionId, runReadLoop);
+        pCollectionConsumerRegistry.registerAndWrap(pCollectionId, runReadLoop);
       }
 
       return runner;

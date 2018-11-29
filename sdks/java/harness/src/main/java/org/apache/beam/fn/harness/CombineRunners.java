@@ -21,7 +21,6 @@ import com.google.auto.service.AutoService;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.ListMultimap;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
@@ -30,6 +29,7 @@ import java.util.function.Supplier;
 import org.apache.beam.fn.harness.control.BundleSplitListener;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
 import org.apache.beam.fn.harness.data.MultiplexingFnDataReceiver;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.CombinePayload;
@@ -125,7 +125,7 @@ public class CombineRunners {
         Map<String, PCollection> pCollections,
         Map<String, RunnerApi.Coder> coders,
         Map<String, RunnerApi.WindowingStrategy> windowingStrategies,
-        ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+        PCollectionConsumerRegistry pCollectionConsumerRegistry,
         Consumer<ThrowingRunnable> addStartFunction,
         Consumer<ThrowingRunnable> addFinishFunction,
         BundleSplitListener splitListener)
@@ -163,9 +163,10 @@ public class CombineRunners {
 
       Collection<FnDataReceiver<WindowedValue<KV<KeyT, AccumT>>>> consumers =
           (Collection)
-              pCollectionIdsToConsumers.get(
+              pCollectionConsumerRegistry.get(
                   Iterables.getOnlyElement(pTransform.getOutputsMap().values()));
 
+      // TODO, ajamato, the runner accepts consumers here as well.
       // Create the runner.
       PrecombineRunner<KeyT, InputT, AccumT> runner =
           new PrecombineRunner<>(
@@ -177,7 +178,7 @@ public class CombineRunners {
 
       // Register the appropriate handlers.
       addStartFunction.accept(runner::startBundle);
-      pCollectionIdsToConsumers.put(
+      pCollectionConsumerRegistry.registerAndWrap(
           Iterables.getOnlyElement(pTransform.getInputsMap().values()),
           (FnDataReceiver)
               (FnDataReceiver<WindowedValue<KV<KeyT, InputT>>>) runner::processElement);

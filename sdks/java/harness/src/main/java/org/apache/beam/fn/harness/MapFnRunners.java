@@ -20,7 +20,6 @@ package org.apache.beam.fn.harness;
 import static com.google.common.collect.Iterables.getOnlyElement;
 
 import com.google.common.collect.Iterables;
-import com.google.common.collect.ListMultimap;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
@@ -29,6 +28,7 @@ import java.util.function.Supplier;
 import org.apache.beam.fn.harness.control.BundleSplitListener;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
 import org.apache.beam.fn.harness.data.MultiplexingFnDataReceiver;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PCollection;
@@ -107,7 +107,7 @@ public abstract class MapFnRunners {
         Map<String, PCollection> pCollections,
         Map<String, RunnerApi.Coder> coders,
         Map<String, RunnerApi.WindowingStrategy> windowingStrategies,
-        ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+        PCollectionConsumerRegistry pCollectionConsumerRegistry,
         Consumer<ThrowingRunnable> addStartFunction,
         Consumer<ThrowingRunnable> addFinishFunction,
         BundleSplitListener splitListener)
@@ -115,13 +115,14 @@ public abstract class MapFnRunners {
 
       Collection<FnDataReceiver<WindowedValue<OutputT>>> consumers =
           (Collection)
-              pCollectionIdsToConsumers.get(getOnlyElement(pTransform.getOutputsMap().values()));
+              pCollectionConsumerRegistry.get(getOnlyElement(pTransform.getOutputsMap().values()));
 
+      // TODO ajamato, receivers passed into this runner here.
       Mapper<InputT, OutputT> mapper =
           mapperFactory.create(
               pTransformId, pTransform, MultiplexingFnDataReceiver.forConsumers(consumers));
 
-      pCollectionIdsToConsumers.put(
+      pCollectionConsumerRegistry.registerAndWrap(
           Iterables.getOnlyElement(pTransform.getInputsMap().values()),
           (FnDataReceiver) (FnDataReceiver<WindowedValue<InputT>>) mapper::map);
       return mapper;

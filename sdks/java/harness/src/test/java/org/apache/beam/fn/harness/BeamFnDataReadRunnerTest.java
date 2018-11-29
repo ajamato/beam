@@ -46,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.beam.fn.harness.PTransformRunnerFactory.Registrar;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.model.pipeline.v1.Endpoints;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
@@ -126,9 +127,9 @@ public class BeamFnDataReadRunnerTest {
 
     List<WindowedValue<String>> outputValues = new ArrayList<>();
 
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
     String localOutputId = "outputPC";
-    consumers.put(
+    consumers.registerAndWrap(
         localOutputId, (FnDataReceiver) (FnDataReceiver<WindowedValue<String>>) outputValues::add);
     List<ThrowingRunnable> startFunctions = new ArrayList<>();
     List<ThrowingRunnable> finishFunctions = new ArrayList<>();

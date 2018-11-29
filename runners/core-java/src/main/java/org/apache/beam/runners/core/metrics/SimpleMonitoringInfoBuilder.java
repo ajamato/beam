@@ -61,6 +61,8 @@ import org.slf4j.LoggerFactory;
 public class SimpleMonitoringInfoBuilder {
   public static final String ELEMENT_COUNT_URN =
       BeamUrns.getUrn(MonitoringInfoUrns.Enum.ELEMENT_COUNT);
+  public static final String INPUT_ELEMENT_COUNT_URN =
+      BeamUrns.getUrn(MonitoringInfoUrns.Enum.INPUT_ELEMENT_COUNT);
   public static final String USER_COUNTER_URN_PREFIX =
       BeamUrns.getUrn(MonitoringInfoUrns.Enum.USER_COUNTER_URN_PREFIX);
   public static final String SUM_INT64_TYPE_URN =

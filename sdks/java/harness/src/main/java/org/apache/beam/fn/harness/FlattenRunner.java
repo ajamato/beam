@@ -22,7 +22,6 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 import com.google.auto.service.AutoService;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.ListMultimap;
 import java.io.IOException;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -30,6 +29,7 @@ import java.util.function.Supplier;
 import org.apache.beam.fn.harness.control.BundleSplitListener;
 import org.apache.beam.fn.harness.data.BeamFnDataClient;
 import org.apache.beam.fn.harness.data.MultiplexingFnDataReceiver;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Coder;
@@ -65,7 +65,7 @@ public class FlattenRunner<InputT> {
         Map<String, PCollection> pCollections,
         Map<String, Coder> coders,
         Map<String, RunnerApi.WindowingStrategy> windowingStrategies,
-        ListMultimap<String, FnDataReceiver<WindowedValue<?>>> pCollectionIdsToConsumers,
+        PCollectionConsumerRegistry pCollectionConsumerRegistry,
         Consumer<ThrowingRunnable> addStartFunction,
         Consumer<ThrowingRunnable> addFinishFunction,
         BundleSplitListener splitListener)
@@ -75,14 +75,14 @@ public class FlattenRunner<InputT> {
       ImmutableSet.Builder<FnDataReceiver<WindowedValue<InputT>>> consumersBuilder =
           new ImmutableSet.Builder<>();
       String output = getOnlyElement(pTransform.getOutputsMap().values());
-      consumersBuilder.addAll((Iterable) pCollectionIdsToConsumers.get(output));
+      consumersBuilder.addAll((Iterable) pCollectionConsumerRegistry.get(output));
 
       FnDataReceiver<WindowedValue<InputT>> receiver =
           MultiplexingFnDataReceiver.forConsumers(consumersBuilder.build());
       FlattenRunner<InputT> runner = new FlattenRunner<>();
 
       for (String pCollectionId : pTransform.getInputsMap().values()) {
-        pCollectionIdsToConsumers.put(pCollectionId, (FnDataReceiver) receiver);
+        pCollectionConsumerRegistry.registerAndWrap(pCollectionId, (FnDataReceiver) receiver);
       }
 
       return runner;

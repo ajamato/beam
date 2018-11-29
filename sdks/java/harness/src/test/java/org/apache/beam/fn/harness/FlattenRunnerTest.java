@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.apache.beam.fn.harness.data.MultiplexingFnDataReceiver;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
@@ -68,8 +69,8 @@ public class FlattenRunnerTest {
             .build();
 
     List<WindowedValue<String>> mainOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
-    consumers.put(
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
+    consumers.registerAndWrap(
         "mainOutputTarget",
         (FnDataReceiver) (FnDataReceiver<WindowedValue<String>>) mainOutputValues::add);
 
@@ -94,10 +95,10 @@ public class FlattenRunnerTest {
         consumers.keySet(),
         containsInAnyOrder("inputATarget", "inputBTarget", "inputCTarget", "mainOutputTarget"));
 
-    Iterables.getOnlyElement(consumers.get("inputATarget")).accept(valueInGlobalWindow("A1"));
-    Iterables.getOnlyElement(consumers.get("inputATarget")).accept(valueInGlobalWindow("A2"));
-    Iterables.getOnlyElement(consumers.get("inputBTarget")).accept(valueInGlobalWindow("B"));
-    Iterables.getOnlyElement(consumers.get("inputCTarget")).accept(valueInGlobalWindow("C"));
+    consumers.getOnlyElement("inputATarget").accept(valueInGlobalWindow("A1"));
+    consumers.getOnlyElement("inputATarget").accept(valueInGlobalWindow("A2"));
+    consumers.getOnlyElement("inputBTarget").accept(valueInGlobalWindow("B"));
+    consumers.getOnlyElement("inputCTarget").accept(valueInGlobalWindow("C"));
     assertThat(
         mainOutputValues,
         contains(
@@ -131,8 +132,8 @@ public class FlattenRunnerTest {
             .build();
 
     List<WindowedValue<String>> mainOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
-    consumers.put(
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
+    consumers.registerAndWrap(
         "mainOutputTarget",
         (FnDataReceiver) (FnDataReceiver<WindowedValue<String>>) mainOutputValues::add);
 

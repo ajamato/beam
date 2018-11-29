@@ -39,6 +39,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
+import org.apache.beam.fn.harness.data.PCollectionConsumerRegistry;
 import org.apache.beam.fn.harness.state.FakeBeamFnStateClient;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateKey;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
@@ -196,8 +197,8 @@ public class FnApiDoFnRunnerTest implements Serializable {
                 bagUserStateKey("combine", "X"), encode("X0")));
 
     List<WindowedValue<String>> mainOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
-    consumers.put(
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
+    consumers.registerAndWrap(
         outputPCollectionId,
         (FnDataReceiver) (FnDataReceiver<WindowedValue<String>>) mainOutputValues::add);
     List<ThrowingRunnable> startFunctions = new ArrayList<>();
@@ -355,7 +356,7 @@ public class FnApiDoFnRunnerTest implements Serializable {
 
     List<WindowedValue<String>> mainOutputValues = new ArrayList<>();
     List<WindowedValue<String>> additionalOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
     consumers.put(
         outputPCollectionId,
         (FnDataReceiver) (FnDataReceiver<WindowedValue<String>>) mainOutputValues::add);
@@ -486,8 +487,8 @@ public class FnApiDoFnRunnerTest implements Serializable {
     FakeBeamFnStateClient fakeClient = new FakeBeamFnStateClient(stateData);
 
     List<WindowedValue<Iterable<String>>> mainOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
-    consumers.put(
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
+    consumers.registerAndWrap(
         Iterables.getOnlyElement(pTransform.getOutputsMap().values()),
         (FnDataReceiver) (FnDataReceiver<WindowedValue<Iterable<String>>>) mainOutputValues::add);
     List<ThrowingRunnable> startFunctions = new ArrayList<>();
@@ -598,7 +599,7 @@ public class FnApiDoFnRunnerTest implements Serializable {
     FakeBeamFnStateClient fakeClient = new FakeBeamFnStateClient(stateData);
 
     List<WindowedValue<Iterable<String>>> mainOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
     consumers.put(
         Iterables.getOnlyElement(pTransform.getOutputsMap().values()),
         (FnDataReceiver) (FnDataReceiver<WindowedValue<Iterable<String>>>) mainOutputValues::add);
@@ -759,7 +760,7 @@ public class FnApiDoFnRunnerTest implements Serializable {
     List<WindowedValue<String>> mainOutputValues = new ArrayList<>();
     List<WindowedValue<KV<String, Timer>>> eventTimerOutputValues = new ArrayList<>();
     List<WindowedValue<KV<String, Timer>>> processingTimerOutputValues = new ArrayList<>();
-    ListMultimap<String, FnDataReceiver<WindowedValue<?>>> consumers = ArrayListMultimap.create();
+    PCollectionConsumerRegistry consumers = new PCollectionConsumerRegistry();
     consumers.put(
         outputPCollectionId,
         (FnDataReceiver) (FnDataReceiver<WindowedValue<String>>) mainOutputValues::add);

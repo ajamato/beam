@@ -348,6 +348,16 @@ message MonitoringInfoSpecs {
       }]
     }];
 
+    INPUT_ELEMENT_COUNT = 6 [(monitoring_info_spec) = {
+      urn: "beam:metric:input_element_count:v1",
+      type_urn: "beam:metrics:sum_int_64",
+      required_labels: ["PTRANSFORM", "PCOLLECTION"],
+      annotations: [{
+        key: "description",
+        value: "The total elements output to a Pcollection by a PTransform."
+      }]
+    }];
+
     START_BUNDLE_MSECS = 2 [(monitoring_info_spec) = {
       urn: "beam:metric:pardo_execution_time:start_bundle_msecs:v1",
       type_urn: "beam:metrics:sum_int_64",
@@ -442,6 +452,9 @@ message MonitoringInfoUrns {
 
     ELEMENT_COUNT = 1 [(org.apache.beam.model.pipeline.v1.beam_urn) =
         "beam:metric:element_count:v1"];
+
+    INPUT_ELEMENT_COUNT = 6 [(org.apache.beam.model.pipeline.v1.beam_urn) =
+      "beam:metric:input_element_count:v1"];
 
     START_BUNDLE_MSECS = 2 [(org.apache.beam.model.pipeline.v1.beam_urn) =
       "beam:metric:pardo_execution_time:start_bundle_msecs:v1"];
