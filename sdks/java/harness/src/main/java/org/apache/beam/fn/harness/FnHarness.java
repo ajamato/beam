@@ -30,7 +30,6 @@ import javax.annotation.Nullable;
 import org.apache.beam.fn.harness.control.AddHarnessIdInterceptor;
 import org.apache.beam.fn.harness.control.BeamFnControlClient;
 import org.apache.beam.fn.harness.control.FinalizeBundleHandler;
-import org.apache.beam.fn.harness.control.HarnessMonitoringInfosInstructionHandler;
 import org.apache.beam.fn.harness.control.ProcessBundleHandler;
 import org.apache.beam.fn.harness.data.BeamFnDataGrpcClient;
 import org.apache.beam.fn.harness.logging.BeamFnLoggingClient;
@@ -44,7 +43,6 @@ import org.apache.beam.model.fnexecution.v1.BeamFnControlGrpc;
 import org.apache.beam.model.pipeline.v1.Endpoints;
 import org.apache.beam.runners.core.construction.PipelineOptionsTranslation;
 import org.apache.beam.runners.core.metrics.ExecutionStateSampler;
-import org.apache.beam.runners.core.metrics.MetricsContainerImpl;
 import org.apache.beam.runners.core.metrics.ShortIdMap;
 import org.apache.beam.sdk.extensions.gcp.options.GcsOptions;
 import org.apache.beam.sdk.fn.IdGenerator;
@@ -54,7 +52,6 @@ import org.apache.beam.sdk.fn.channel.ManagedChannelFactory;
 import org.apache.beam.sdk.fn.stream.OutboundObserverFactory;
 import org.apache.beam.sdk.function.ThrowingFunction;
 import org.apache.beam.sdk.io.FileSystems;
-import org.apache.beam.sdk.metrics.MetricsEnvironment;
 import org.apache.beam.sdk.options.ExperimentalOptions;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.vendor.grpc.v1p26p0.com.google.protobuf.TextFormat;
@@ -265,8 +262,6 @@ public class FnHarness {
                     }
                   });
 
-      MetricsEnvironment.setProcessWideContainer(new MetricsContainerImpl(null));
-
       ProcessBundleHandler processBundleHandler =
           new ProcessBundleHandler(
               options,
@@ -321,12 +316,6 @@ public class FnHarness {
                                   .collect(
                                       Collectors.toMap(
                                           Function.identity(), metricsShortIds::get)))));
-
-      HarnessMonitoringInfosInstructionHandler processWideHandler =
-          new HarnessMonitoringInfosInstructionHandler(metricsShortIds);
-      handlers.put(
-          InstructionRequest.RequestCase.HARNESS_MONITORING_INFOS,
-          processWideHandler::harnessMonitoringInfos);
 
       JvmInitializers.runBeforeProcessing(options);
 
