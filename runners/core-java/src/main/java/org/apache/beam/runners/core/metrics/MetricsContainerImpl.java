@@ -74,8 +74,6 @@ public class MetricsContainerImpl implements Serializable, MetricsContainer {
 
   protected final @Nullable String stepName;
 
-  private boolean isProcessWide = false;
-
   private MetricsMap<MetricName, CounterCell> counters = new MetricsMap<>(CounterCell::new);
 
   private MetricsMap<MetricName, DistributionCell> distributions =
@@ -101,9 +99,6 @@ public class MetricsContainerImpl implements Serializable, MetricsContainer {
 
   /** Reset the metrics. */
   public void reset() {
-    if (isProcessWide()) {
-      throw new RuntimeException("Process Wide metric containers must not be reset");
-    }
     reset(counters);
     reset(distributions);
     reset(gauges);
@@ -114,16 +109,6 @@ public class MetricsContainerImpl implements Serializable, MetricsContainer {
     for (MetricCell<?> cell : cells.values()) {
       cell.reset();
     }
-  }
-
-  @Override
-  public boolean isProcessWide() {
-    return this.isProcessWide;
-  }
-
-  @Override
-  public void setIsProcessWide(boolean processWide) {
-    this.isProcessWide = processWide;
   }
 
   /**
@@ -291,7 +276,6 @@ public class MetricsContainerImpl implements Serializable, MetricsContainer {
   }
 
   /** Return the cumulative values for any metrics in this container as MonitoringInfos. */
-  @Override
   public Iterable<MonitoringInfo> getMonitoringInfos() {
     // Extract user metrics and store as MonitoringInfos.
     ArrayList<MonitoringInfo> monitoringInfos = new ArrayList<MonitoringInfo>();
